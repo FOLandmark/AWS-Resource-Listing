@@ -1,0 +1,65 @@
+import boto3
+
+# Set the AWS access key ID and secret access key to be used
+aws_access_key_id = 'aws-access-key-ID' #insert your aws access ID here
+aws_secret_access_key = 'aws-secret-access-key' #insert your aws secret access key here
+
+# Set the AWS account ID to be searched
+account_id = 'aws-account-id' #insert your aws account id here
+
+
+# Create an empty dictionary to hold the resources grouped by region
+resources_by_region = {}
+
+# Get a list of all the AWS regions
+regions = [region['RegionName'] for region in boto3.client('ec2', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key).describe_regions()['Regions']]
+
+# Iterate through all the regions and collect resources for the user account in each region
+for region in regions:
+    # Set up the boto3 clients for all relevant AWS services for this region
+    ec2 = boto3.client('ec2', region_name=region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    s3 = boto3.client('s3', region_name=region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    rds = boto3.client('rds', region_name=region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+    iam = boto3.client('iam', region_name=region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+
+    # Collect EC2 resources created by the user account in this region
+    ec2_resources = ec2.describe_instances(Filters=[
+        {'Name': 'owner-id', 'Values': [account_id]}
+    ])
+    # Add the EC2 resources to the dictionary for this region
+    resources_by_region[region] = {'EC2': ec2_resources['Reservations']}
+
+    # Collect S3 resources created by the user account in this region
+    s3_resources = s3.list_buckets()
+    # Add the S3 resources to the dictionary for this region
+    resources_by_region[region]['S3'] = s3_resources['Buckets']
+
+    # Collect RDS resources created by the user account in this region
+    rds_resources = rds.describe_db_instances(Filters=[
+        {'Name': 'db-instance-id', 'Values': ['DescribeDBInstances']}
+    ])
+    # Add the RDS resources to the dictionary for this region
+    resources_by_region[region]['RDS'] = rds_resources['DBInstances']
+
+    # Collect IAM resources created by the user account in this region
+    iam_resources = iam.list_users()
+    # Add the IAM resources to the dictionary for this region
+    resources_by_region[region]['IAM'] = iam_resources['Users']
+
+# Print the dictionary of resources grouped by region
+#print(resources_by_region)
+
+for region, resources in resources_by_region.items():
+    print(f"Region: {region}")
+    for resource_type, resource_list in resources.items():
+        print(f"\tResource Type: {resource_type}")
+        for resource in resource_list:
+            if resource_type == "EC2":
+                for instance in resource['Instances']:
+                    print(f"\t\tInstance ID: {instance['InstanceId']}\tInstance Type: {instance['InstanceType']}\tState: {instance['State']['Name']}\tLaunch Time: {instance['LaunchTime']}")
+            elif resource_type == "S3":
+                print(f"\t\tBucket Name: {resource['Name']}")
+            elif resource_type == "IAM":
+                print(f"\t\tUser Name: {resource['UserName']}")
+        print()
+
